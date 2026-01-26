@@ -88,7 +88,7 @@ class MultiTurnAgentExecutor(AgentExecutorBase):
             action_end = action_start + len(action_tokens)
             action_ranges.append((action_start, action_end))
 
-            # Call step function to get environment feedback
+            # Call step function to get environment feedback (S, A -> R, S')
             states = {
                 "observation_text": observation_text,
                 "action_text": action_text,

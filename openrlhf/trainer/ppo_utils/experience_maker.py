@@ -321,9 +321,20 @@ class SamplesGenerator:
             ready_refs, pending_refs = ray.wait(pending_refs, num_returns=1, timeout=10.0)
             for ref in ready_refs:
                 # Build Experience objects for each vLLM response returned from this worker.
-                experiences = [
-                    self._process_response_into_experience(response, **generate_kwargs) for response in ray.get(ref)
-                ]
+                # ray.get(ref) returns a list (executes multiple samples concurrently) of dictionaries;
+                # each dictionary is the ouput of AgentExecutor.execute()
+                # experiences = [
+                #     self._process_response_into_experience(response, **generate_kwargs) for response in ray.get(ref)
+                # ]
+                responses = ray.get(ref)
+                experiences = []
+                for response in responses:
+                    if isinstance(response, list):
+                        experiences.extend(
+                            [self._process_response_into_experience(r, **generate_kwargs) for r in response]
+                        )
+                    else:
+                        experiences.append(self._process_response_into_experience(response, **generate_kwargs))
 
                 # Drop experiences if the average score falls outside the allowed range.
                 if dynamic_filtering and all(e.scores is not None for e in experiences):

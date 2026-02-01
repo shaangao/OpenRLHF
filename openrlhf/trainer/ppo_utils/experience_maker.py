@@ -460,7 +460,10 @@ class SamplesGenerator:
         for key, value in extra_logs.items():
             if isinstance(value, torch.Tensor):
                 value = value.flatten()[0].item()
-            info[key] = torch.tensor([value])
+            try:
+                info[key] = torch.tensor([value])
+            except (ValueError, TypeError):
+                pass
 
         return Experience(
             sequences=sequences.unsqueeze(0),

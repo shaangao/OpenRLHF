@@ -180,6 +180,49 @@ class LLMRayActor:
         ]
         return await asyncio.gather(*tasks)
 
+    async def generate_responses_custom(
+        self,
+        prompt: str,
+        label: str,
+        sampling_params,
+        max_length: int,
+        hf_tokenizer,
+        num_samples: int = 1,
+        executor_name: str = "execute",
+    ):
+        """
+        Generate N samples for a single prompt using a specified executor method.
+        If executor_name is "execute_selfplay", it will look for "execute_selfplay" method.
+        If not found, it falls back to "execute".
+        """
+        method_name = f"execute_{executor_name}" if executor_name != "execute" else "execute"
+        
+        # Check if the method exists on the executor
+        if hasattr(self.executor, method_name) and callable(getattr(self.executor, method_name)):
+            executor_method = getattr(self.executor, method_name)
+        else:
+            # Fallback logic
+            # If the user requested 'selfplay' or 'fixed', but it doesn't exist, try standard 'execute'
+            import warnings
+            if method_name != "execute":
+                warnings.warn(
+                    f"AgentExecutor does not implement '{method_name}'; falling back to 'execute()'. "
+                    f"Requested executor: {executor_name}"
+                )
+            executor_method = self.executor.execute
+
+        tasks = [
+            executor_method(
+                prompt=prompt,
+                label=label,
+                sampling_params=sampling_params,
+                max_length=max_length,
+                hf_tokenizer=hf_tokenizer,
+                llm_engine=self,
+            )
+            for _ in range(num_samples)
+        ]
+        return await asyncio.gather(*tasks)
 
 def create_vllm_engines(
     num_engines: int,

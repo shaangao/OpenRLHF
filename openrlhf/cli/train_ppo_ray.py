@@ -432,6 +432,8 @@ if __name__ == "__main__":
     parser.add_argument("--value_head_prefix", type=str, default="score")
     parser.add_argument("--ref_reward_offload", action="store_true", default=False)
     parser.add_argument("--agent_func_path", type=str, default=None, help="Agent script path")
+    parser.add_argument("--train_executor", type=str, default="selfplay", choices=["selfplay", "fixed"], help="Game executor for training")
+    parser.add_argument("--eval_executor", type=str, default="fixed", choices=["selfplay", "fixed"], help="Game executor for evaluation")
 
     # Custom dataset
     parser.add_argument("--prompt_data", type=str, default=None, help="HF dataset name or path")

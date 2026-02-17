@@ -255,10 +255,14 @@ class SamplesGenerator:
         if self.args.vllm_enable_sleep:
             batch_vllm_engine_call(self.vllm_engines, "wake_up")
 
+        # Get executor strategy from args or env
+        executor_name = getattr(self.args, "eval_executor", "execute")
+
         experiences, prompts_consumed, exhausted = self._generate_vllm(
             dataloader_iter=self._eval_dataloader_iter,
             num_prompts=len(self.eval_dataloader),
             dynamic_filtering=False,
+            executor_name=executor_name,
             **generate_kwargs,
         )
 
@@ -280,10 +284,14 @@ class SamplesGenerator:
         if self.args.vllm_enable_sleep:
             batch_vllm_engine_call(self.vllm_engines, "wake_up")
 
+        # Get executor strategy from args or env
+        executor_name = getattr(self.args, "train_executor", "execute")
+
         experiences, prompts_consumed, exhausted = self._generate_vllm(
             dataloader_iter=self._dataloader_iter,
             num_prompts=self.args.rollout_batch_size,
             dynamic_filtering=self.args.dynamic_filtering,
+            executor_name=executor_name,
             **generate_kwargs,
         )
 
@@ -302,7 +310,7 @@ class SamplesGenerator:
         return experiences, filter_pass_rate, prompts_consumed, exhausted
 
     def _generate_vllm(
-        self, dataloader_iter, num_prompts: int, dynamic_filtering, **generate_kwargs
+        self, dataloader_iter, num_prompts: int, dynamic_filtering, executor_name="execute", **generate_kwargs
     ) -> Tuple[List[Experience], int, bool]:
         """Generate a batch of Experiences with optional reward filtering."""
         prompts_consumed = 0
@@ -311,7 +319,7 @@ class SamplesGenerator:
         if exhausted:
             return [], prompts_consumed, exhausted
 
-        pending_refs = self._dispatch_prompts_to_vllm(prompts, labels, **generate_kwargs)
+        pending_refs = self._dispatch_prompts_to_vllm(prompts, labels, executor_name=executor_name, **generate_kwargs)
         prompts_consumed += len(prompts)
 
         accepted_experiences: List[Experience] = []
@@ -365,12 +373,12 @@ class SamplesGenerator:
                         return [], prompts_consumed, True
                     # Otherwise dispatch the new prompt to keep filling the queue.
                     else:
-                        new_refs = self._dispatch_prompts_to_vllm(new_prompts, new_labels, **generate_kwargs)
+                        new_refs = self._dispatch_prompts_to_vllm(new_prompts, new_labels, executor_name=executor_name, **generate_kwargs)
                         pending_refs.extend(new_refs)
 
         return accepted_experiences, prompts_consumed, exhausted
 
-    def _dispatch_prompts_to_vllm(self, prompts: List[str], labels: List[str], **generate_kwargs) -> List:
+    def _dispatch_prompts_to_vllm(self, prompts: List[str], labels: List[str], executor_name="execute", **generate_kwargs) -> List:
         """Send prompts to rollout executors and return Ray object refs."""
         sampling_params = SamplingParams(
             temperature=generate_kwargs.get("temperature", 1.0),
@@ -399,13 +407,16 @@ class SamplesGenerator:
         for idx, (prompt, label) in enumerate(zip(prompts, labels)):
             # Spread work across engines/workers in load-aware order.
             llm_engine = self.vllm_engines[engine_indices[idx]]
-            ref = llm_engine.generate_responses.remote(
+            
+            # Use generate_responses_custom with the requested executor_name
+            ref = llm_engine.generate_responses_custom.remote(
                 prompt=prompt,
                 label=label,
                 sampling_params=sampling_params,
                 max_length=truncate_length,
                 hf_tokenizer=self.tokenizer,
                 num_samples=self.args.n_samples_per_prompt,
+                executor_name=executor_name,
             )
             refs.append(ref)
 
